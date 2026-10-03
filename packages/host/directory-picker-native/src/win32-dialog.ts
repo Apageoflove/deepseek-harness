@@ -18,7 +18,7 @@ export interface Win32DialogWorkerLike {
    */
   on(event: 'message', listener: (message: Win32DialogWorkerMessage) => void): unknown
   on(event: 'error', listener: (error: Error) => void): unknown
-  on(event: 'exit', listener: (code: number) => void): unknown
+  on(event: 'exit', listener: (code: number | null, signal: string | null) => void): unknown
   /**
    * Force-stop the child; the abort path's last resort when `WM_CLOSE`
    * never lands (e.g. the dialog window was never created).
@@ -150,9 +150,15 @@ export async function pickWin32Directory(
         reject(error)
       })
     })
-    worker.on('exit', () => {
+    worker.on('exit', (code: number | null, signal: string | null) => {
       settle(() => {
-        reject(new Error('win32 folder dialog worker exited before reporting a result'))
+        // code/signal travel with the message so spawn-layer failures (a
+        // worker that dies before its first IPC message) are separable from
+        // in-dialog crashes at a glance. null code = killed by signal,
+        // null signal = exited on its own.
+        reject(new Error(
+          `win32 folder dialog worker exited before reporting a result (code=${code ?? 'null'}, signal=${signal ?? 'null'})`,
+        ))
       })
     })
   })

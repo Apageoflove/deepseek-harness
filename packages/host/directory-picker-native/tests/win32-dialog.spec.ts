@@ -96,6 +96,18 @@ describe('pickWin32Directory', () => {
     await expect(exiting).rejects.toThrow('exited before reporting a result')
   })
 
+  it('reports the exit code and signal so spawn-layer deaths are separable', async () => {
+    const killed = harness()
+    const aborting = pickWin32Directory(live(), killed.internals)
+    killed.worker.emit('exit', null, 'SIGABRT')
+    await expect(aborting).rejects.toThrow('exited before reporting a result (code=null, signal=SIGABRT)')
+
+    const died = harness()
+    const exiting = pickWin32Directory(live(), died.internals)
+    died.worker.emit('exit', 3)
+    await expect(exiting).rejects.toThrow('exited before reporting a result (code=3, signal=null)')
+  })
+
   it('settles once: a late exit after the result is inert', async () => {
     const { worker, internals } = harness()
     const picked = pickWin32Directory(live(), internals)

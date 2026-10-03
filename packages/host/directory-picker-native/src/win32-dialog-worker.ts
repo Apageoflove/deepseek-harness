@@ -25,7 +25,6 @@ export type Win32DialogWorkerMessage =
   | { kind: 'error'; message: string }
 
 const title = process.env.DSH_DIALOG_TITLE ?? ''
-if (title === '') throw new Error('win32-dialog-worker: DSH_DIALOG_TITLE is required')
 if (process.send === undefined) throw new Error('win32-dialog-worker must run as a child process with an IPC channel')
 // node's internal `send` reads `this.connected`, so bind the receiver.
 const send = process.send.bind(process)
@@ -40,8 +39,13 @@ const post = (message: Win32DialogWorkerMessage): void => {
 /* v8 ignore next 3 -- the handler exits(0), which would kill the unit lane; built-worker.e2e.ts owns the real disconnect lifecycle. */
 process.on('disconnect', () => process.exit(0))
 
-// No top-level await: the built worker ships as CJS, which cannot carry TLA.
-void (async () => {
+// A misconfigured spawn must fail through the IPC channel: a top-level
+// throw exits before any message lands, and the driver could only report
+// the opaque "exited before reporting a result". The IPC-less case above
+// has no channel to report on, so its throw stays.
+if (title === '') {
+  post({ kind: 'error', message: 'win32-dialog-worker: DSH_DIALOG_TITLE is required' } satisfies Win32DialogWorkerMessage)
+} else void (async () => {
   try {
     const bindings = await loadWin32DialogBindings()
     const path = runFolderDialog(bindings, title, (threadId) => {
